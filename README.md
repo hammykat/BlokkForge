@@ -12,9 +12,9 @@ Blokk is designed around:
 * **High Performance** — Uses techniques such as SIMD, Structure of Arrays (SoA), cache-friendly data layouts, and parallel processing.
 * **Adaptive Threading** — The engine can automatically adjust its worker-thread usage based on execution time.
 * **2D Focused** — Built specifically around 2D game development rather than trying to cover every type of game.
-* **C++** — Full access to C++ and the underlying engine.
+* **C++** — Full access to C++ and the engine, allowing the user to change the engine to fit their needs if it doesn't.
 * **SDL3 Rendering** — Uses SDL3 for rendering and SDL_image for loading image assets.
-* **Lightweight** — Designed to keep the engine's core systems relatively small and focused.
+* **Lightweight** — Designed to keep the engine's core systems relatively small.
 * **Open Source** — Anyone can inspect the source code, learn from it, contribute improvements, or experiment with the architecture.
 * **Control** – Most systems can be manually controlled and on default, are turned off. This allows the user **only pay for what they need** and not anything extra they aren't using.
 
