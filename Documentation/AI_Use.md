@@ -17,4 +17,4 @@ AI was NOT used for:
 * **Project direction** — Features, goals, priorities, and the overall direction of the project were decided by a human!
 
 Here's a 2-hour timelapse (as proof that this wasn't vibe coded) of me coding the project:
-[![BlokkForge coding timelapse](Assets/Code_Timelapse_1_Thumbnail.png)](Assets/Code_Timelapse_1.mp4)
+[![BlokkForge coding timelapse](Assets/Code_Timelapse_1_Thumbnail.png)](Assets/Coding_Timelapse_1.mp4)
