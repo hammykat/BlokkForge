@@ -1,0 +1,27 @@
+//
+// Created by berke on 6/17/2026.
+//
+
+#ifndef TILKY_ENGINE_SSECOMPAT_HPP
+#define TILKY_ENGINE_SSECOMPAT_HPP
+
+/// Include this header instead of sse2neon.h or immintrin.h individually
+
+#include <xmmintrin.h>
+#include <emmintrin.h>
+
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386) || defined(_M_IX86)
+    #include <immintrin.h>
+#elif defined(__aarch64__) || defined(_M_ARM64) || defined(__ARM_NEON) || defined(__ARM_NEON__)
+    #include "sse2neon.h"
+#else
+    #define NOSIMD
+#endif
+
+#if defined(TILKY_CLANGD) // Work around the compiler mistakenly marking __mm_shuffle_ps as an error
+    #define TILKY_MM_SHUFFLE_PS(a, b, imm) (a)
+#else
+    #define TILKY_MM_SHUFFLE_PS(a, b, imm) _mm_shuffle_ps((a), (b), (imm))
+#endif
+
+#endif //TILKY_ENGINE_SSECOMPAT_HPP

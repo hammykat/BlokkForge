@@ -10,13 +10,13 @@ int main()
         Blokk::InitFlags::Events
     );
 
-    // Create an ObjectManager
+    // Create an EngineCore
     Blokk::ManagerCreation CreationParams{
         Blokk::Vector2{1280, 720},
         60
     };
 
-    Blokk::ObjectManager MyManager(CreationParams);
+    Blokk::EngineCore MyManager(CreationParams);
 
     // Create the renderer and window
     Blokk::Renderer Renderer(

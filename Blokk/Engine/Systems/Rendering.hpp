@@ -99,9 +99,9 @@ SDL_Window* CreateWindow(
 class Renderer
 {
 public:
-    friend class ObjectManager;
+    friend class EngineCore;
 
-    Renderer(ObjectManager& Manager_, SDL_Window* Window_) :
+    Renderer(EngineCore& Manager_, SDL_Window* Window_) :
         Manager(Manager_),
         Window(Window_)
     {
@@ -226,7 +226,7 @@ public:
 
 private:
 
-    ObjectManager& Manager;
+    EngineCore& Manager;
     SDL_Window* Window;
     SDL_Renderer* SDLRenderer;
 

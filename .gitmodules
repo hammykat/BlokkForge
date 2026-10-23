@@ -4,3 +4,15 @@
 [submodule "vendored/SDL_image"]
 	path = vendored/SDL_image
 	url = https://github.com/libsdl-org/SDL_image.git
+[submodule "vendored/xsimd"]
+	path = vendored/xsimd
+	url = https://github.com/xtensor-stack/xsimd.git
+[submodule "vendored/BFCL"]
+	path = vendored/BFCL
+	url = https://github.com/hammykat/BFCL.git
+[submodule "vendored/openal-soft"]
+	path = vendored/openal-soft
+	url = https://github.com/kcat/openal-soft.git
+[submodule "vendored/imgui"]
+	path = vendored/imgui
+	url = https://github.com/ocornut/imgui.git

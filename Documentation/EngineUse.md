@@ -14,7 +14,7 @@
 * [Getting Started](#getting-started)
 
   * [Including Blokk](#including-blokk)
-  * [Creating an ObjectManager](#creating-an-objectmanager)
+    * [Creating an EngineCore](#creating-an-enginecore)
 * [Game Objects](#game-objects)
 
   * [Creating Objects](#creating-objects)
@@ -23,7 +23,7 @@
 * [Using Blokk With Built-In Rendering](#using-blokk-with-built-in-rendering)
 
   * [Initializing](#initializing)
-  * [Creating an ObjectManager](#creating-an-objectmanager-1)
+    * [Creating an EngineCore](#creating-an-enginecore-1)
   * [Creating a Window](#creating-a-window)
   * [Creating a Renderer](#creating-a-renderer)
   * [Rendering](#rendering)
@@ -206,9 +206,9 @@ You do not need to include SDL3 or SDL_image directly when using Blokk's public 
 
 ---
 
-## Creating an ObjectManager
+## Creating an EngineCore
 
-The `ObjectManager` is the primary interface for managing objects and processing the engine.
+The `EngineCore` is the primary interface for managing objects and processing the engine.
 
 Create an instance by passing a `ManagerCreation` structure:
 
@@ -218,7 +218,7 @@ Blokk::ManagerCreation CreationParams{
     60
 };
 
-Blokk::ObjectManager MyManager(CreationParams);
+Blokk::EngineCore MyManager(CreationParams);
 ```
 
 `ManagerCreation` contains the basic information the engine needs when starting:
@@ -234,7 +234,7 @@ struct ManagerCreation
 * `ScreenDimensions` — The dimensions of the screen used by the rendering system.
 * `FPS` — The target FPS used by the engine's default timing. Defaults to `30`.
 
-Once the `ObjectManager` has been created, you can begin creating objects and processing the engine.
+Once the `EngineCore` has been created, you can begin creating objects and processing the engine.
 
 ---
 
@@ -373,9 +373,9 @@ Blokk::Init(
 
 ---
 
-## Creating an ObjectManager
+## Creating an EngineCore
 
-Create an `ObjectManager` using `ManagerCreation`:
+Create an `EngineCore` using `ManagerCreation`:
 
 ```cpp
 Blokk::ManagerCreation CreationParams{
@@ -383,7 +383,7 @@ Blokk::ManagerCreation CreationParams{
     60
 };
 
-Blokk::ObjectManager MyManager(CreationParams);
+Blokk::EngineCore MyManager(CreationParams);
 ```
 
 ---
@@ -434,7 +434,7 @@ Available window flags:
 
 ## Creating a Renderer
 
-Create a `Renderer` by passing your `ObjectManager` and a window:
+Create a `Renderer` by passing your `EngineCore` and a window:
 
 ```cpp
 Blokk::Renderer Renderer(
@@ -635,13 +635,13 @@ int main()
         Blokk::InitFlags::Events
     );
 
-    // Create the ObjectManager
+    // Create the EngineCore
     Blokk::ManagerCreation CreationParams{
         Vector2{1280, 720},
         60
     };
 
-    Blokk::ObjectManager MyManager(
+    Blokk::EngineCore MyManager(
         CreationParams
     );
 

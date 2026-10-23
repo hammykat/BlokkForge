@@ -7,14 +7,16 @@
 #include <vector>
 #include <cstdint>
 
+#include "types.hpp"
+
 namespace Blokk
 {
 
-class ObjectManager;
+class EngineCore;
 class Worker;
 
 using WorkerJobFunction =
-    void (ObjectManager::*)(IndexRange, Worker*);
+    void (EngineCore::*)(Worker&);
 
 
 // Thread
@@ -22,8 +24,7 @@ class Worker
 {
 public:
 
-    ~Worker()
-    {
+    ~Worker() {
         Stop();
     }
 
@@ -47,7 +48,7 @@ public:
             Lock.unlock();
 
             // Same function + same manager for everyone
-            (Manager->*CurrentJob)(RangeToProcess, this);
+            (Manager->*CurrentJob)(*this);
 
             // Tell manager we're finished
             {
@@ -76,13 +77,11 @@ public:
         return Finished;
     }
 
-    void Wake()
-    {
+    void Wake() {
         CV.notify_one();
     }
 
-    void Awake()
-    {
+    void Awake() {
         Thread = std::thread(&Worker::Run, this);
     }
 
@@ -95,6 +94,20 @@ public:
             Thread.join();
     }
 
+    [[nodiscard]] inline 
+    uint32_t getID() const {
+        return ID;
+    }
+
+    void setID(uint32_t id) {
+        ID = id;
+    }
+
+    [[nodiscard]] inline
+    IndexRange getRange() const {
+        return TargetRange;
+    }
+
     void WaitUntilFinished()
     {
         std::unique_lock<std::mutex> Lock(Mutex);
@@ -105,7 +118,7 @@ public:
         });
     }
 
-    inline static ObjectManager* Manager = nullptr;
+    inline static EngineCore* Manager = nullptr;
     inline static WorkerJobFunction CurrentJob = nullptr;
 
     std::atomic<bool> Running = true;
@@ -115,6 +128,7 @@ public:
 private:
 
     IndexRange TargetRange;
+    uint32_t ID;
 
     std::thread Thread;
 
@@ -125,6 +139,7 @@ private:
 
     std::mutex Mutex;
     std::condition_variable CV;
+
 };
 
 }

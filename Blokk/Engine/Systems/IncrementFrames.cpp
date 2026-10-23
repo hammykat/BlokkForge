@@ -1,272 +1,237 @@
-#include <vector>
+#ifdef Blokk_Rendering_Enabled
+
 #include <cstdint>
 
-#if defined(__x86_64__) || defined(__i386__) || \
-    defined(_M_X64) || defined(_M_IX86)
+#include <xsimd/xsimd.hpp>
 
-    #include <immintrin.h>
+#include "EngineClassData.hpp"
+#include "IncrementFrames-inl.h"
 
-#elif defined(__aarch64__) || defined(_M_ARM64)
+namespace Blokk
+{
 
-    #include <arm_neon.h>
+void EngineCore::IncrementFrames()
+{
+    const std::uint32_t Size =
+        static_cast<std::uint32_t>(FrameNums.size());
 
+    auto Process = [&]<typename Arch>()
+    {
+        IncrementFramesImpl<Arch>(FrameNums.data(), Size);
+    };
+
+#ifdef Blokk_Support_SIMD_AVX512VNNI
+    if (xsimd::avx512vnni<xsimd::avx512vbmi2>::available())
+    {
+        Process.template operator()<xsimd::avx512vnni<xsimd::avx512vbmi2>>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_AVX512VBMI2
+    if (xsimd::avx512vbmi2::available())
+    {
+        Process.template operator()<xsimd::avx512vbmi2>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_AVX512VBMI
+    if (xsimd::avx512vbmi::available())
+    {
+        Process.template operator()<xsimd::avx512vbmi>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_AVX512IFMA
+    if (xsimd::avx512ifma::available())
+    {
+        Process.template operator()<xsimd::avx512ifma>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_AVX512
+    if (xsimd::avx512bw::available())
+    {
+        Process.template operator()<xsimd::avx512bw>();
+        return;
+    }
+    if (xsimd::avx512dq::available())
+    {
+        Process.template operator()<xsimd::avx512dq>();
+        return;
+    }
+    if (xsimd::avx512vl::available())
+    {
+        Process.template operator()<xsimd::avx512vl>();
+        return;
+    }
+    if (xsimd::avx512cd::available())
+    {
+        Process.template operator()<xsimd::avx512cd>();
+        return;
+    }
+    if (xsimd::avx512f::available())
+    {
+        Process.template operator()<xsimd::avx512f>();
+        return;
+    }
+    if (xsimd::avx512vl_256::available())
+    {
+        Process.template operator()<xsimd::avx512vl_256>();
+        return;
+    }
+    if (xsimd::avx512vl_128::available())
+    {
+        Process.template operator()<xsimd::avx512vl_128>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_AVX_VNNI
+    if (xsimd::avxvnni::available())
+    {
+        Process.template operator()<xsimd::avxvnni>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_AVX2
+    if (xsimd::avx2::available())
+    {
+        Process.template operator()<xsimd::avx2>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_AVX
+    if (xsimd::avx::available())
+    {
+        Process.template operator()<xsimd::avx>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_SSE4_2
+    if (xsimd::sse4_2::available())
+    {
+        Process.template operator()<xsimd::sse4_2>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_SSE4_1
+    if (xsimd::sse4_1::available())
+    {
+        Process.template operator()<xsimd::sse4_1>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_SSSE3
+    if (xsimd::ssse3::available())
+    {
+        Process.template operator()<xsimd::ssse3>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_SSE3
+    if (xsimd::sse3::available())
+    {
+        Process.template operator()<xsimd::sse3>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_SSE2
+    if (xsimd::sse2::available())
+    {
+        Process.template operator()<xsimd::sse2>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_I8MM
+    if (xsimd::i8mm<xsimd::neon64>::available())
+    {
+        Process.template operator()<xsimd::i8mm<xsimd::neon64>>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_NEON64
+    if (xsimd::neon64::available())
+    {
+        Process.template operator()<xsimd::neon64>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_NEON
+    if (xsimd::neon::available())
+    {
+        Process.template operator()<xsimd::neon>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_SVE512
+    if (xsimd::detail::sve<512>::available())
+    {
+        Process.template operator()<xsimd::detail::sve<512>>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_SVE256
+    if (xsimd::detail::sve<256>::available())
+    {
+        Process.template operator()<xsimd::detail::sve<256>>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_SVE128
+    if (xsimd::detail::sve<128>::available())
+    {
+        Process.template operator()<xsimd::detail::sve<128>>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_RVV512
+    if (xsimd::detail::rvv<512>::available())
+    {
+        Process.template operator()<xsimd::detail::rvv<512>>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_RVV256
+    if (xsimd::detail::rvv<256>::available())
+    {
+        Process.template operator()<xsimd::detail::rvv<256>>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_RVV128
+    if (xsimd::detail::rvv<128>::available())
+    {
+        Process.template operator()<xsimd::detail::rvv<128>>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_VSX
+    if (xsimd::vsx::available())
+    {
+        Process.template operator()<xsimd::vsx>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_VXE
+    if (xsimd::vxe::available())
+    {
+        Process.template operator()<xsimd::vxe>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_WASM
+    if (xsimd::wasm::available())
+    {
+        Process.template operator()<xsimd::wasm>();
+        return;
+    }
 #endif
 
-#include "SIMD_Finder.hpp"
-#include "EngineClassData.hpp"
-
-namespace Blokk {
-
-    namespace InternalHelpers 
+    for (std::uint32_t i = 0; i < Size; ++i)
     {
-        // Forward declarations for SIMD helper functions
-
-        #if defined(__x86_64__) || defined(__i386__) || \
-            defined(_M_X64) || defined(_M_IX86)
-
-        void IncrementFrames_SIMD_AVX2(
-            std::vector<uint32_t>& FrameNums,
-            uint32_t Size
-        );
-
-        void IncrementFrames_SIMD_AVX512(
-            std::vector<uint32_t>& FrameNums,
-            uint32_t Size
-        );
-
-        void IncrementFrames_SIMD_SSE2(
-            std::vector<uint32_t>& FrameNums,
-            uint32_t Size
-        );
-
-        #endif
-
-        #if defined(__aarch64__) || defined(_M_ARM64)
-
-        void IncrementFrames_SIMD_NEON(
-            std::vector<uint32_t>& FrameNums,
-            uint32_t Size
-        );
-
-        #endif
-    }
-
-void ObjectManager::IncrementFrames(
-    std::vector<uint32_t>& FrameNums
-) {
-    uint32_t Size = FrameNums.size();
-
-    switch(SIMDRegisterLevel)
-    {
-        #if defined(__x86_64__) || defined(__i386__) || \
-            defined(_M_X64) || defined(_M_IX86)
-
-        // 256 bit
-        case SIMDLevel::AVX2:
-            InternalHelpers::IncrementFrames_SIMD_AVX2(FrameNums, Size);
-            break;
-
-        // 512 bit
-        case SIMDLevel::AVX512:
-            InternalHelpers::IncrementFrames_SIMD_AVX512(FrameNums, Size);
-            break;
-
-        // 128 bit
-        case SIMDLevel::SSE2:
-            InternalHelpers::IncrementFrames_SIMD_SSE2(FrameNums, Size);
-            break;
-
-        #endif
-
-        #if defined(__aarch64__) || defined(_M_ARM64)
-
-        // 128 bit - NEON
-        case SIMDLevel::NEON:
-            InternalHelpers::IncrementFrames_SIMD_NEON(FrameNums, Size);
-            break;
-
-        #endif
-
-        // Scalar fallback
-        default:
-            for(uint32_t i = 0; i < Size; ++i)
-            {
-                FrameNums[i]++;
-            }
-            break;
+        ++FrameNums[i];
     }
 }
 
-// Helpers for incrementing with SIMD --------------------
-
-namespace InternalHelpers {
-
-    #if defined(__x86_64__) || defined(__i386__) || \
-        defined(_M_X64) || defined(_M_IX86)
-
-    __attribute__((target("avx2")))
-    // AVX2 (256 bit - 8 uint32_t) - 8 at a time
-    void IncrementFrames_SIMD_AVX2(
-        std::vector<uint32_t>& FrameNums,
-        uint32_t Size
-    ) {
-        // Helper
-        __m256i One = _mm256_set1_epi32(1);
-
-        // Loop
-        uint32_t i = 0;
-        for(; i + 8 <= Size; i += 8)
-        {
-            // Frame nums
-            __m256i FrameData = _mm256_loadu_si256(
-                reinterpret_cast<const __m256i*>(&FrameNums[i])
-            );
-
-            // Add them
-            FrameData = _mm256_add_epi32(FrameData, One);
-
-            // Store back
-            _mm256_storeu_si256(
-                reinterpret_cast<__m256i*>(&FrameNums[i]),
-                FrameData
-            );
-        }
-
-        // Loop through the rest of the items
-        for(; i < Size; ++i)
-        {
-            // Update x
-            FrameNums[i]++;
-        }
-    }
-
-
-    __attribute__((target("avx512f")))
-    // AVX512 (512 bit, 16 uint32_t) - 16 at a time
-    void IncrementFrames_SIMD_AVX512(
-        std::vector<uint32_t>& FrameNums,
-        uint32_t Size
-    ) {
-        // Helper
-        __m512i One = _mm512_set1_epi32(1);
-
-        // Loop
-        uint32_t i = 0;
-        for(; i + 16 <= Size; i += 16)
-        {
-            // Frame nums
-            __m512i FrameData = _mm512_loadu_si512(
-                reinterpret_cast<const __m512i*>(&FrameNums[i])
-            );
-
-            // Add them
-            FrameData = _mm512_add_epi32(FrameData, One);
-
-            // Store back
-            _mm512_storeu_si512(
-                reinterpret_cast<__m512i*>(&FrameNums[i]),
-                FrameData
-            );
-        }
-
-        // Loop through the rest of the items
-        for(; i < Size; ++i)
-        {
-            // Update x
-            FrameNums[i]++;
-        }
-    }
-
-
-    __attribute__((target("sse2")))
-    // SSE2 (128 bit, 4 uint32_t) - 4 at a time
-    void IncrementFrames_SIMD_SSE2(
-        std::vector<uint32_t>& FrameNums,
-        uint32_t Size
-    ) {
-        // Helper
-        __m128i One = _mm_set1_epi32(1);
-
-        // Loop
-        uint32_t i = 0;
-        for(; i + 4 <= Size; i += 4)
-        {
-            // Frame nums
-            __m128i FrameData = _mm_loadu_si128(
-                reinterpret_cast<const __m128i*>(&FrameNums[i])
-            );
-
-            // Add them
-            FrameData = _mm_add_epi32(FrameData, One);
-
-            // Store back
-            _mm_storeu_si128(
-                reinterpret_cast<__m128i*>(&FrameNums[i]),
-                FrameData
-            );
-        }
-
-        // Loop through the rest of the items
-        for(; i < Size; ++i)
-        {
-            // Update x
-            FrameNums[i]++;
-        }
-    }
-
-    #endif
-
-
-    #if defined(__aarch64__) || defined(_M_ARM64)
-
-    // NEON (128 bit, 4 uint32_t) - 4 at a time
-    void IncrementFrames_SIMD_NEON(
-        std::vector<uint32_t>& FrameNums,
-        uint32_t Size
-    ) {
-        // Helper
-        uint32x4_t One = vdupq_n_u32(1);
-
-        // Loop
-        uint32_t i = 0;
-        for(; i + 4 <= Size; i += 4)
-        {
-            // Frame nums
-            uint32x4_t FrameData = vld1q_u32(
-                &FrameNums[i]
-            );
-
-            // Add them
-            FrameData = vaddq_u32(FrameData, One);
-
-            // Store back
-            vst1q_u32(
-                &FrameNums[i],
-                FrameData
-            );
-        }
-
-        // Loop through the rest of the items
-        for(; i < Size; ++i)
-        {
-            // Update x
-            FrameNums[i]++;
-        }
-    }
-
-    #endif
-
-    // Scalar
-    void IncrementFrames_Scalar(
-        std::vector<uint32_t>& FrameNums,
-        uint32_t Size
-    ) {
-        for(uint32_t i = 0; i < Size; i++)
-        {
-            FrameNums[i]++;
-        }
-    }
-
 }
 
-}
+#endif

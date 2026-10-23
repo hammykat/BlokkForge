@@ -8,15 +8,14 @@ Blokk focuses on **high performance, lightweight architecture, and ease of use**
 
 Blokk is designed around:
 
-* **Beginner-friendly API** — Easy-to-use functions and systems designed to make the engine easy to use and learn.
+* **Beginner-friendly API** — Simple, understandable functions and systems designed to make the engine easier to learn.
 * **High Performance** — Uses techniques such as SIMD, Structure of Arrays (SoA), cache-friendly data layouts, and parallel processing.
 * **Adaptive Threading** — The engine can automatically adjust its worker-thread usage based on execution time.
 * **2D Focused** — Built specifically around 2D game development rather than trying to cover every type of game.
-* **C++** — Full access to C++ and the engine, allowing the user to change the engine to fit their needs if it doesn't.
+* **C++** — Full access to C++ and the underlying engine.
 * **SDL3 Rendering** — Uses SDL3 for rendering and SDL_image for loading image assets.
-* **Lightweight** — Designed to keep the engine's core systems relatively small.
+* **Lightweight** — Designed to keep the engine's core systems relatively small and focused.
 * **Open Source** — Anyone can inspect the source code, learn from it, contribute improvements, or experiment with the architecture.
-* **Control** – Most systems can be manually controlled and on default, are turned off. This allows the user **only pay for what they need** and not anything extra they aren't using.
 
 The goal is to provide a simple API for beginners without sacrificing the performance and control expected from a C++ engine.
 
@@ -34,10 +33,11 @@ Some of the approaches used by the engine include:
 * Adaptive thread management
 * Separation of static and dynamic object data
 * Visibility culling
+* Specialized processing paths
 
 The long-term goal is to make Blokk capable of efficiently handling very large numbers of objects while maintaining stable frame times.
 
-Performance is an ongoing area of development, and future versions will include benchmarking and better optimization.
+Performance is an ongoing area of development, and future versions will include more extensive benchmarking and optimization.
 
 For more information about the engine's architecture, see the [engine architecture documentation](Documentation/EngineArchitecture.md).
 
@@ -92,7 +92,7 @@ The camera supports:
 
 * Setting its position
 * Changing its X and Y position
-* Accessing camera position through the `ObjectManager`
+* Accessing camera position through the `EngineCore`
 * Camera-aware rendering
 * Camera-aware visibility culling (Basic + Axis)
 

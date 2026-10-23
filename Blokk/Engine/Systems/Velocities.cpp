@@ -1,366 +1,241 @@
-#include "GameObject.hpp"
-#include "ObjectUpdateStructs.hpp"
-#include "SIMD_Finder.hpp"
+#include <cstdint>
 
-#if defined(__x86_64__) || defined(__i386__) || \
-    defined(_M_X64) || defined(_M_IX86)
-    #include <immintrin.h>
-#elif defined(__aarch64__) || defined(_M_ARM64)
-    #include <arm_neon.h>
-#endif
+#include <xsimd/xsimd.hpp>
+
+#include "EngineClassData.hpp"
+#include "Velocities-inl.h"
 
 namespace Blokk
 {
 
-    // Forward declarations for SIMD helper functions
-    namespace InternalHelpers
-    {
-        #if defined(__x86_64__) || defined(__i386__) || \
-            defined(_M_X64) || defined(_M_IX86)
-
-        void ProcessVelocities_SIMD_AVX2(
-            float* PosX, float* PosY,
-            const float* VelX, const float* VelY,
-            uint32_t Size
-        );
-
-        void ProcessVelocities_SIMD_AVX512(
-            float* PosX, float* PosY,
-            const float* VelX, const float* VelY,
-            uint32_t Size
-        );
-
-        void ProcessVelocities_SIMD_SSE2(
-            float* PosX, float* PosY,
-            const float* VelX, const float* VelY,
-            uint32_t Size
-        );
-
-        #elif defined(__aarch64__) || defined(_M_ARM64)
-
-        void ProcessVelocities_SIMD_NEON(
-            float* PosX, float* PosY,
-            const float* VelX, const float* VelY,
-            uint32_t Size
-        );
-
-        #endif
-    }
-
-
-// Update a range of positions
-void ObjectManager::UpdateRangeOfPositions(
-    IndexRange TRange,
-    Worker* Thread
-)
+void EngineCore::UpdateRangeOfPositions(Worker& worker)
 {
-    float* XPos = &XPositions[TRange.Start];
-    float* YPos = &YPositions[TRange.Start];
+    IndexRange Range = worker.getRange();
 
-    float* XVels = &XVelocities[TRange.Start];
-    float* YVels = &YVelocities[TRange.Start];
+    float* XPos = &XPositions[Range.Start];
+    float* YPos = &YPositions[Range.Start];
 
-    uint32_t Size = TRange.GetSize();
+    const float* XVel = &XVelocities[Range.Start];
+    const float* YVel = &YVelocities[Range.Start];
 
-    (this->*UpdatePositions)(
-        XPos,
-        YPos,
-        XVels,
-        YVels,
-        Size
-    );
-}
+    const std::uint32_t Size = Range.GetSize();
 
-
-template <SIMDLevel Level>
-void ObjectManager::UpdatePositionsFn(
-    float* PosX,
-    float* PosY,
-    const float* VelX,
-    const float* VelY,
-    uint32_t Size
-)
-{
-    #if defined(__x86_64__) || defined(__i386__) || \
-        defined(_M_X64) || defined(_M_IX86)
-
-    // 256 bit
-    if constexpr (Level == SIMDLevel::AVX2)
+    auto Process = [&]<typename Arch>()
     {
-        InternalHelpers::ProcessVelocities_SIMD_AVX2(
-            PosX,
-            PosY,
-            VelX,
-            VelY,
-            Size
-        );
-    }
+        ProcessVelocities_SIMD<Arch>(XPos, YPos, XVel, YVel, Size);
+    };
 
-    // 512 bit
-    else if constexpr (Level == SIMDLevel::AVX512)
+#ifdef Blokk_Support_SIMD_AVX512VNNI
+    if (xsimd::avx512vnni<xsimd::avx512vbmi2>::available())
     {
-        InternalHelpers::ProcessVelocities_SIMD_AVX512(
-            PosX,
-            PosY,
-            VelX,
-            VelY,
-            Size
-        );
+        Process.template operator()<xsimd::avx512vnni<xsimd::avx512vbmi2>>();
+        return;
     }
-
-    // 128 bit
-    else if constexpr (Level == SIMDLevel::SSE2)
+#endif
+#ifdef Blokk_Support_SIMD_AVX512VBMI2
+    if (xsimd::avx512vbmi2::available())
     {
-        InternalHelpers::ProcessVelocities_SIMD_SSE2(
-            PosX,
-            PosY,
-            VelX,
-            VelY,
-            Size
-        );
+        Process.template operator()<xsimd::avx512vbmi2>();
+        return;
     }
-
-
-    #elif defined(__aarch64__) || defined(_M_ARM64)
-
-    // NEON - 128 bit
-    if constexpr (Level == SIMDLevel::NEON)
+#endif
+#ifdef Blokk_Support_SIMD_AVX512VBMI
+    if (xsimd::avx512vbmi::available())
     {
-        InternalHelpers::ProcessVelocities_SIMD_NEON(
-            PosX,
-            PosY,
-            VelX,
-            VelY,
-            Size
-        );
+        Process.template operator()<xsimd::avx512vbmi>();
+        return;
     }
-
-    #endif
-
-    // Scalar
-    else
+#endif
+#ifdef Blokk_Support_SIMD_AVX512IFMA
+    if (xsimd::avx512ifma::available())
     {
-        InternalHelpers::ProcessVelocities_Scalar(
-            PosX,
-            PosY,
-            VelX,
-            VelY,
-            Size
-        );
+        Process.template operator()<xsimd::avx512ifma>();
+        return;
     }
-}
-
-
-// Helpers for SIMD velocities ---------------------------
-namespace InternalHelpers
-{
-
-#if defined(__x86_64__) || defined(__i386__) || \
-    defined(_M_X64) || defined(_M_IX86)
-
-__attribute__((target("avx2")))
-void ProcessVelocities_SIMD_AVX2(
-    float* PosX,
-    float* PosY,
-    const float* VelX,
-    const float* VelY,
-    uint32_t Size
-)
-{
-    // 256 bit - 8 floats at a time
-    uint32_t i = 0;
-
-    for (; i + 8 <= Size; i += 8)
+#endif
+#ifdef Blokk_Support_SIMD_AVX512
+    if (xsimd::avx512bw::available())
     {
-        // Positions
-        __m256 XPos =
-            _mm256_loadu_ps(&PosX[i]);
-
-        __m256 YPos =
-            _mm256_loadu_ps(&PosY[i]);
-
-        // Velocities
-        __m256 XVel =
-            _mm256_loadu_ps(&VelX[i]);
-
-        __m256 YVel =
-            _mm256_loadu_ps(&VelY[i]);
-
-        // Add velocities to positions
-        XPos = _mm256_add_ps(XPos, XVel);
-        YPos = _mm256_add_ps(YPos, YVel);
-
-        // Store back
-        _mm256_storeu_ps(&PosX[i], XPos);
-        _mm256_storeu_ps(&PosY[i], YPos);
+        Process.template operator()<xsimd::avx512bw>();
+        return;
     }
-
-    // Remainder
-    for (; i < Size; ++i)
+    if (xsimd::avx512dq::available())
     {
-        PosX[i] += VelX[i];
-        PosY[i] += VelY[i];
+        Process.template operator()<xsimd::avx512dq>();
+        return;
     }
-}
-
-
-__attribute__((target("avx512f")))
-void ProcessVelocities_SIMD_AVX512(
-    float* PosX,
-    float* PosY,
-    const float* VelX,
-    const float* VelY,
-    uint32_t Size
-)
-{
-    // 512 bit - 16 floats at a time
-    uint32_t i = 0;
-
-    for (; i + 16 <= Size; i += 16)
+    if (xsimd::avx512vl::available())
     {
-        // Positions
-        __m512 XPos =
-            _mm512_loadu_ps(&PosX[i]);
-
-        __m512 YPos =
-            _mm512_loadu_ps(&PosY[i]);
-
-        // Velocities
-        __m512 XVel =
-            _mm512_loadu_ps(&VelX[i]);
-
-        __m512 YVel =
-            _mm512_loadu_ps(&VelY[i]);
-
-        // Add velocities to positions
-        XPos = _mm512_add_ps(XPos, XVel);
-        YPos = _mm512_add_ps(YPos, YVel);
-
-        // Store back
-        _mm512_storeu_ps(&PosX[i], XPos);
-        _mm512_storeu_ps(&PosY[i], YPos);
+        Process.template operator()<xsimd::avx512vl>();
+        return;
     }
-
-    // Remainder
-    for (; i < Size; ++i)
+    if (xsimd::avx512cd::available())
     {
-        PosX[i] += VelX[i];
-        PosY[i] += VelY[i];
+        Process.template operator()<xsimd::avx512cd>();
+        return;
     }
-}
-
-
-__attribute__((target("sse2")))
-void ProcessVelocities_SIMD_SSE2(
-    float* PosX,
-    float* PosY,
-    const float* VelX,
-    const float* VelY,
-    uint32_t Size
-)
-{
-    // 128 bit - 4 floats at a time
-    uint32_t i = 0;
-
-    for (; i + 4 <= Size; i += 4)
+    if (xsimd::avx512f::available())
     {
-        // Positions
-        __m128 XPos =
-            _mm_loadu_ps(&PosX[i]);
-
-        __m128 YPos =
-            _mm_loadu_ps(&PosY[i]);
-
-        // Velocities
-        __m128 XVel =
-            _mm_loadu_ps(&VelX[i]);
-
-        __m128 YVel =
-            _mm_loadu_ps(&VelY[i]);
-
-        // Add velocities to positions
-        XPos = _mm_add_ps(XPos, XVel);
-        YPos = _mm_add_ps(YPos, YVel);
-
-        // Store back
-        _mm_storeu_ps(&PosX[i], XPos);
-        _mm_storeu_ps(&PosY[i], YPos);
+        Process.template operator()<xsimd::avx512f>();
+        return;
     }
-
-    // Remainder
-    for (; i < Size; ++i)
+    if (xsimd::avx512vl_256::available())
     {
-        PosX[i] += VelX[i];
-        PosY[i] += VelY[i];
+        Process.template operator()<xsimd::avx512vl_256>();
+        return;
     }
-}
-
+    if (xsimd::avx512vl_128::available())
+    {
+        Process.template operator()<xsimd::avx512vl_128>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_AVX_VNNI
+    if (xsimd::avxvnni::available())
+    {
+        Process.template operator()<xsimd::avxvnni>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_AVX2
+    if (xsimd::avx2::available())
+    {
+        Process.template operator()<xsimd::avx2>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_AVX
+    if (xsimd::avx::available())
+    {
+        Process.template operator()<xsimd::avx>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_SSE4_2
+    if (xsimd::sse4_2::available())
+    {
+        Process.template operator()<xsimd::sse4_2>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_SSE4_1
+    if (xsimd::sse4_1::available())
+    {
+        Process.template operator()<xsimd::sse4_1>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_SSSE3
+    if (xsimd::ssse3::available())
+    {
+        Process.template operator()<xsimd::ssse3>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_SSE3
+    if (xsimd::sse3::available())
+    {
+        Process.template operator()<xsimd::sse3>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_SSE2
+    if (xsimd::sse2::available())
+    {
+        Process.template operator()<xsimd::sse2>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_I8MM
+    if (xsimd::i8mm<xsimd::neon64>::available())
+    {
+        Process.template operator()<xsimd::i8mm<xsimd::neon64>>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_NEON64
+    if (xsimd::neon64::available())
+    {
+        Process.template operator()<xsimd::neon64>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_NEON
+    if (xsimd::neon::available())
+    {
+        Process.template operator()<xsimd::neon>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_SVE512
+    if (xsimd::detail::sve<512>::available())
+    {
+        Process.template operator()<xsimd::detail::sve<512>>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_SVE256
+    if (xsimd::detail::sve<256>::available())
+    {
+        Process.template operator()<xsimd::detail::sve<256>>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_SVE128
+    if (xsimd::detail::sve<128>::available())
+    {
+        Process.template operator()<xsimd::detail::sve<128>>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_RVV512
+    if (xsimd::detail::rvv<512>::available())
+    {
+        Process.template operator()<xsimd::detail::rvv<512>>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_RVV256
+    if (xsimd::detail::rvv<256>::available())
+    {
+        Process.template operator()<xsimd::detail::rvv<256>>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_RVV128
+    if (xsimd::detail::rvv<128>::available())
+    {
+        Process.template operator()<xsimd::detail::rvv<128>>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_VSX
+    if (xsimd::vsx::available())
+    {
+        Process.template operator()<xsimd::vsx>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_VXE
+    if (xsimd::vxe::available())
+    {
+        Process.template operator()<xsimd::vxe>();
+        return;
+    }
+#endif
+#ifdef Blokk_Support_SIMD_WASM
+    if (xsimd::wasm::available())
+    {
+        Process.template operator()<xsimd::wasm>();
+        return;
+    }
 #endif
 
-#if defined(__aarch64__) || defined(_M_ARM64)
-
-void ProcessVelocities_SIMD_NEON(
-    float* PosX,
-    float* PosY,
-    const float* VelX,
-    const float* VelY,
-    uint32_t Size
-)
-{
-    // 128 bit - 4 floats at a time
-    uint32_t i = 0;
-
-    for (; i + 4 <= Size; i += 4)
+    for (std::uint32_t i = 0; i < Size; ++i)
     {
-        // Positions
-        float32x4_t XPos =
-            vld1q_f32(&PosX[i]);
-
-        float32x4_t YPos =
-            vld1q_f32(&PosY[i]);
-
-        // Velocities
-        float32x4_t XVel =
-            vld1q_f32(&VelX[i]);
-
-        float32x4_t YVel =
-            vld1q_f32(&VelY[i]);
-
-        // Add velocities to positions
-        XPos = vaddq_f32(XPos, XVel);
-        YPos = vaddq_f32(YPos, YVel);
-
-        // Store back
-        vst1q_f32(&PosX[i], XPos);
-        vst1q_f32(&PosY[i], YPos);
+        XPos[i] += XVel[i];
+        YPos[i] += YVel[i];
     }
-
-    // Remainder
-    for (; i < Size; ++i)
-    {
-        PosX[i] += VelX[i];
-        PosY[i] += VelY[i];
-    }
-}
-
-#endif
-
-// Scalar
-void ProcessVelocities_Scalar(
-    float* PosX,
-    float* PosY,
-    const float* VelX,
-    const float* VelY,
-    uint32_t Size
-) {
-    for(uint32_t i = 0; i < Size; i++)
-    {
-        PosX[i] += VelX[i];
-        PosY[i] += VelY[i];
-    }
-}
-
-
 }
 
 }

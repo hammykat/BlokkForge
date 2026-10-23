@@ -1,4 +1,7 @@
 #include "GameObject.hpp"
+#include "EngineClassData.hpp"
+
+#ifdef Blokk_Rendering_Enabled
 
 namespace Blokk {
 
@@ -42,3 +45,5 @@ void GameObject::ToggleVisibility()
 }  
     
 }
+
+#endif

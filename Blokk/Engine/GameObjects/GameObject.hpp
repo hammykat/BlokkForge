@@ -1,199 +1,122 @@
 #pragma once
 
-#include <vector>
-#include <cctype>
-#include <cmath>
-#include <queue>
-#include "GameTypes.hpp"
-#include "EngineClassData.hpp"
-#include "ObjectUpdateStructs.hpp"
+#include <cstdint>
+#include <string>
 
-using namespace std;
+// TODO: Clean up Cached and Uncached folders; nothing's in them!
 
-#define Vel_ZERO Vector2{0, 0}
+#include "types.hpp"
 
-namespace Blokk {
+namespace Blokk
+{
 
-class ObjectManager;
+class EngineCore;
 
-class GameObject {
-
+class GameObject
+{
 public:
-    friend class ObjectManager;
-    static inline ObjectManager *Engine;
 
-    // Remembers where it is located in the engine's data
+    friend class EngineCore;
+
+    static inline EngineCore* Engine = nullptr;
+
     uint32_t EngineIdx;
 
-    // Anim
-    string CurrentAnim;
+    // Points to index in Engine->AnimNames
+    uint32_t CurrentAnim; 
 
-    // States
     bool IsStatic;
     bool IsVisible;
     bool IsAnimated;
     bool IsCollidable;
 
-    GameObject(ObjectCreationParams CP = {true, {0, 0}, {0, 0}}) :
-        IsStatic(CP.Velocity.x == 0 && CP.Velocity.y == 0),
-        EngineIdx(0),
-        IsVisible(true)
-    {
-        Engine->ProcessAddCommand(CP);
-    }
+    GameObject(
+        ObjectCreationParams CP = {true, {0, 0}, {0, 0}}
+    );
 
-    GameObject(Vector2 Velocity, Vector2 Position, GameObject* Object, bool Visible = true) :
-        IsStatic(Velocity.x == 0 && Velocity.y == 0),
-        EngineIdx(0),
-        IsVisible(true)
-    {
-        Engine->ProcessAddCommand(Velocity, Position, Object, Visible);
-    }
+    GameObject(
+        vector2<float> Velocity,
+        vector2<float> Position,
+        GameObject* Object,
+        bool Visible = true
+    );
 
-    ~GameObject()
-    {
-        // If static
-        if(IsStatic) {
-            Engine->DestroyStaticObject(EngineIdx);
-        } 
-        // If dynamic
-        else {
-            Engine->DestroyDynamicObject(EngineIdx);
-        }
-    }
+    ~GameObject();
 
-    // HELPERS -----------------------------------------------------
-
-    // Set to static if dynamic
-    void SetToStatic()
-    {
-        // Update internal var
-        IsStatic = true;
-
-        // Remove from dynamic, place at end of static
-        Engine->SwapDynamicObjects(EngineIdx, Engine->DynamicObjectCount - 1);
-        Engine->SwapStaticObjects(EngineIdx, Engine->ObjectCount - 1);
-
-        // Remove velocities
-        Engine->XVelocities.pop_back();
-        Engine->YVelocities.pop_back();
-    }
-
-    // Set to dynamic if static
-    void SetToDynamic(Vector2 Vel)
-    {
-        // Update internal var
-        IsStatic = false;
-
-        // Add to dynamic
-        Engine->SwapStaticObjects(EngineIdx, Engine->DynamicObjectCount);
-
-        // Add velocity
-        Engine->XVelocities.push_back(Vel.x);
-        Engine->YVelocities.push_back(Vel.y);
-
-        // Update engine's vars
-        Engine->DynamicObjectCount++;
-    }
-
-    // VELOCITY -----------------------------------------------------
+    void SetToStatic();
+    void SetToDynamic(vector2<float> Vel);
 
     void SetVelocity(float XVel, float YVel);
-
-    void SetVelocity(Vector2 Velocity);
-
+    void SetVelocity(vector2<float> Velocity);
     void SetVelocityX(float XVel);
-
     void SetVelocityY(float YVel);
 
-    Vector2 GetVelocity();
-
+    vector2<float> GetVelocity();
     float GetVelocityX();
-
     float GetVelocityY();
-
     float GetSpeed();
-
     float GetSpeedSquared();
-
     bool IsMoving();
-
     void StopVelocity();
 
-
-
     void ReverseVelocity();
-
     void ReverseVelocityX();
-
     void ReverseVelocityY();
 
-    // MULTIPLY -------------------------------------------------
-
     void MultiplyVelocity(float FactorX, float FactorY);
-
-    void MultiplyVelocity(Vector2 Factor);
-
+    void MultiplyVelocity(vector2<float> Factor);
     void MultiplyVelocity(float Factor);
 
-    // Individual
     void MultiplyXVelocity(float Factor);
-
     void MultiplyYVelocity(float Factor);
 
-    // ADD ------------------------------------------------------
-
     void AddVelocity(float XVel, float YVel);
-
-    void AddVelocity(Vector2 Vel);
-    
-    // DIVIDE ---------------------------------------------------
+    void AddVelocity(vector2<float> Vel);
 
     void DivideVelocity(float XVel, float YVel);
-
-    void DivideVelocity(Vector2 Vel);
-
+    void DivideVelocity(vector2<float> Vel);
     void DivideVelocityX(float Vel);
-
     void DivideVelocityY(float Vel);
-    
-    // POSITION -------------------------------------------------
 
     void SetPosition(float TargetX, float TargetY);
-
-    void SetPosition(Vector2 TargetPos);
-
+    void SetPosition(vector2<float> TargetPos);
     void SetXPosition(float Target);
-
     void SetYPosition(float Target);
 
-    Vector2 GetPosition();
+    vector2<float> GetPosition();
 
-    void ChangePosition(Vector2 Change);
-
+    void ChangePosition(vector2<float> Change);
     void ChangePosition(float ChangeX, float ChangeY);
-
     void ChangeXPosition(float X);
-
     void ChangeYPosition(float Y);
 
-    // VISIBILITY --------------------------------------------------------------
+#ifdef Blokk_Rendering_Enabled
 
     void Hide();
-
     void Show();
-
-    void SetVisible(bool Vis);
-
     bool IsCurrentlyVisible();
-
     void ToggleVisibility();
 
-    // Animation ------------------------------------------
+#endif
 
-    void SetAnimation(string AnimName);
-
+    void SetAnimation(std::string AnimName);
     void SetFrameNum(uint32_t FrameNum);
+
+#ifdef Blokk_GameObjects_UpdateFunction
+protected:
+    // The function the user can override for the engine to run every frame
+    virtual void _Update(float delta) {}
+
+    // Sets the update priority level
+    void SetUpdatePriorityLevel(const uint8_t level) 
+    {
+        // Priority levels are stored in the EngineCore, no use in storing as 
+        // member in class (less memory usage). Stored inside UpdatePriorities (vector<uint8_t>)
+        Engine->UpdatePriorities[EngineIdx] = level;
+    }
+#endif
+
 };
 
-}
+};
+

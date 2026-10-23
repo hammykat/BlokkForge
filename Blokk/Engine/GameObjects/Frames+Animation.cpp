@@ -1,5 +1,7 @@
 #include "GameObject.hpp"
 
+#ifdef Blokk_Rendering_Enabled
+
 namespace Blokk {
 
 void GameObject::SetFrameNum(uint32_t FrameNum)
@@ -20,3 +22,5 @@ void GameObject::SetAnimation(string AnimName)
 }
 
 }
+
+#endif

@@ -1,3 +1,17 @@
+# v0.1.9
+> not completed yet
+
+### Fixes
+* Made `SetTargetExecutionTime(double)` public inside the `EngineCore` class instead of inside the `Diagnostics` class
+* Implemented `SetThreadCount(uint32_t)` - was declared but not defined
+
+### CMake 
+* Changed configuration macros to JSON configuration
+* Removed macro logic outside of EngineClassData.hpp and into CMake
+* Moved CMake into CMake/ directory and split into 3 files for organization (Data, CMakeLists, JSONParser)
+* Updated documentation for threading systems and CMake build commands
+* Made compiler support guardrails to SIMD types
+
 # v0.1.8
 > 9/6/2026
 
@@ -75,7 +89,7 @@ With **ARM NEON support, scalar SIMD fallbacks, improved SIMD detection, persist
   * `CreateNewEmptyAnimation()`
   * `AddFrameToAnimation()`
   * `CreateAnimation()`
-* Added texture and per-frame dimension storage to `ObjectManager`.
+* Added texture and per-frame dimension storage to `EngineCore`.
 * Added rendering object index tracking.
 
 ## Camera
@@ -88,12 +102,12 @@ With **ARM NEON support, scalar SIMD fallbacks, improved SIMD detection, persist
   * `SetYPosition()`
   * `ChangeXPosition()`
   * `ChangeYPosition()`
-* Added support for accessing the camera through the `ObjectManager`.
+* Added support for accessing the camera through the `EngineCore`.
 
 ## Engine Architecture
 
 * Reworked animation functionality to separate rendering functions from animation data.
-* Updated `ObjectManager` to support the new rendering architecture.
+* Updated `EngineCore` to support the new rendering architecture.
 * Added conditional rendering support through `Blokk_Rendering_Enabled`.
 * Updated engine CMake configuration for SDL3_image.
 * Added SDL_image as a vendored Git submodule.
@@ -157,7 +171,7 @@ With **ARM NEON support, scalar SIMD fallbacks, improved SIMD detection, persist
 
 ### Threading
 
-* Adjusted thread initialization so the worker's static `ObjectManager` reference is set **before** opening the worker thread.
+* Adjusted thread initialization so the worker's static `EngineCore` reference is set **before** opening the worker thread.
 * This fixes initialization ordering and makes the worker setup more reliable.
 
 ### Rendering

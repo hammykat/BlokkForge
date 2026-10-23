@@ -2,88 +2,64 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <queue>
-#include <thread>
 #include <vector>
-#include <chrono>
-#include <mutex>
-#include <condition_variable>
-#include <unordered_map>
-#include <stdexcept>
-#include <iostream>
 #include <string>
 #include <memory>
 #include <algorithm>
-
-#if defined(__x86_64__) || defined(__i386__) || \
-    defined(_M_X64) || defined(_M_IX86)
-
-    #include <immintrin.h>
-    #include <intrin.h>
-
-#elif defined(__aarch64__) || defined(_M_ARM64)
-
-    #include <arm_neon.h>
-
-#endif
-
 #include <SDL3/SDL.h>
 
-// Get correct default values
-#ifndef Blokk_Visibility_CullType
-    #define Blokk_Visibility_CullType 1 // Axis culling
-#endif
+// BFCL
+#include <concurrent_unordered_queue.hpp>
 
-#ifndef Blokk_Thread_Control
-    #ifndef Blokk_Thread_AdaptiveTiming
-        #define Blokk_Thread_AdaptiveTiming
-    #endif
-#endif
+#include "Camera.hpp"
 
-#ifndef Blokk_Thread_AdaptiveTiming
-    #define Blokk_Thread_FixedCount
-#endif
+// Forward-declare SDL types to avoid pulling the whole SDL header into this
+// widely-included header. Include the SDL headers in .cpp files where
+// concrete SDL types are required.
+struct SDL_Texture;
 
-#include "GameTypes.hpp"
-#include "ObjectUpdateStructs.hpp"
+// Configuration macros are handled in CMake. Check "Cmake/JSONParser.cmake"
+
+#include "types.hpp"
 #include "SIMD_Finder.hpp"
+#include "GameObject.hpp"
+
 
 namespace Blokk
 {
 
-struct IndexRange
-{
-    uint32_t Start, End;
-
-    uint32_t GetSize() const
-    {
-        return End - Start;
-    }
-};
-
-    class ObjectManager;
+    class EngineCore;
     class GameObject;
     class Renderer;
+    class Diagnostics;
 
-    using CheckVisibleRangeFnPtr =
-        void(ObjectManager::*)(IndexRange Range, Worker* Thread);
 
     using UpdatePositionsFnPtr =
-        void(ObjectManager::*)(
+        void(EngineCore::*)(
             float* PosX, float* PosY,
             const float* VelX, const float* VelY,
             uint32_t Size
         );
 
     using TimeEngineProcessesFnPtr =
-        double(ObjectManager::*)();
+        double(EngineCore::*)();
+
+    using nanoseconds = std::chrono::nanoseconds;
+    using microseconds = std::chrono::microseconds;
+    using milliseconds = std::chrono::milliseconds;
+    using seconds = std::chrono::seconds;
+
+    constexpr auto nanoseconds_zero = std::chrono::nanoseconds::zero();
 }
 
 #include "Threading.hpp"
 
 namespace Blokk
 {
-    enum BlokkCulling
+    using CheckVisibleRangeFnPtr =
+        void(EngineCore::*)(Worker& Thread);
+
+    enum Culling
     {
         Axis,
         Basic
@@ -96,18 +72,20 @@ namespace Blokk
 
     struct ManagerCreation
     {
-        Vector2 ScreenDimensions;
+        vector2<uint32_t> ScreenDimensions;
         uint32_t FPS = 30;
     };
 
     // Object manager
-    class ObjectManager
+    class EngineCore
     {
     public:
         friend class GameObject;
+        friend class CachedGameObject;
         friend class Renderer;
+        friend class Diagnostics;
 
-        ObjectManager(ManagerCreation Cr) :
+        EngineCore(ManagerCreation Cr) :
 
             // Threads
             ThreadOpenedPrevFrame(false),
@@ -119,10 +97,21 @@ namespace Blokk
 
             // Frames
             FPS(Cr.FPS),
-            FrameTime(1000.0 / Cr.FPS),
+            FrameTime {
+                std::chrono::duration<double>{1.0 / Cr.FPS},
+                std::chrono::duration<double, std::milli>{1.0 / Cr.FPS},
+                std::chrono::duration<double, std::micro>{1.0 / Cr.FPS},
+                std::chrono::duration<double, std::nano>{1.0 / Cr.FPS}
+            },
+            TargetExecutionTime {
+                FrameTime.secs * 0.8,
+                FrameTime.milli * 0.8,
+                FrameTime.micro * 0.8,
+                FrameTime.nano * 0.8
+            },
+
             FrameExecutionTime(0),
             PrevFrameTime(0),
-            TargetExecutionTime(FrameTime * 0.8),
 
             // Diagnostics timing
             #ifdef Blokk_Diagnostics
@@ -135,6 +124,11 @@ namespace Blokk
                     RenderTime(0),
                 #endif
 
+            #endif
+
+            // Camera
+            #ifdef Blokk_CamEnabled
+                Camera(),
             #endif
 
             // SIMD
@@ -168,97 +162,44 @@ namespace Blokk
             for(uint32_t i = 0; i < ThreadCount; i++)
             {
                 OpenThread();
+                Workers[i]->setID(i);
             }
 
             // Get the proper functions
             GetFunctions();
         }
 
-        ~ObjectManager()
+        ~EngineCore()
         {
             // Destroy all threads
-            for(uint32_t i = 0; i < OpenedThreads; i++)
-            {
+            for(uint32_t i = 0; i < OpenedThreads; i++) {
                 DestroyThread();
             }
         }
 
         void EngineProcess();
 
-        #ifdef Blokk_Thread_FixedCount
-        void SetThreadCount(uint32_t Count);
+        // Camera
+        #ifdef Blokk_CamEnabled
+            CameraController Camera;
         #endif
 
-        // Diagnostics -----------------------------------
-
-        #ifdef Blokk_Diagnostics
-
-        uint32_t GetTotalObjects() const
-        {
-            return ObjectCount;
-        }
-
-        uint32_t GetStaticObjectCount() const
-        {
-            return StaticObjectCount;
-        }
-
-        uint32_t GetDynamicObjectCount() const
-        {
-            return DynamicObjectCount;
-        }
-
-        uint32_t GetOpenedThreads() const
-        {
-            return OpenedThreads;
-        }
-
-        uint32_t GetTotalThreads() const
-        {
-            return ThreadCount;
-        }
-
-        double GetFrameExecutionTime() const
-        {
-            return FrameExecutionTime;
-        }
-
-        double GetTargetExecutionTime() const
-        {
-            return TargetExecutionTime;
-        }
-
-        uint32_t GetFPS() const
-        {
-            return FPS;
-        }
-
-        double GetUserUpdateTime() const
-        {
-            return UserUpdateTime;
-        }
-
-        double GetVelocityTime() const
-        {
-            return VelocityTime;
-        }
-
-        double GetAnimationIncrementTime() const
-        {
-            return AnimationIncrementTime;
-        }
-
-        double GetVisibilityCullingTime() const
-        {
-            return VisibilityCullingTime;
-        }
-
-        #ifdef Blokk_Rendering_Enabled
-        double GetRenderTime() const
-        {
-            return RenderTime;
-        }
+        // Functions the user can call if manual threading enabled
+        #ifdef Blokk_Threading_Manual
+        void SetThreadCount(uint32_t Count); // Set the number of threads
+        void OpenThread(); // Create a thread
+        void DestroyThread(); // Destroy a thread
         #endif
+
+        #ifdef Blokk_Threading_AdaptiveTiming
+
+        // Adaptive threading system flags
+        void StopAdaptiveThreadingSystem() { // Disable
+            AdaptiveThreadingEnabled = false;
+        }
+        void EnableAdaptiveThreadingSystem() { // Enable
+            AdaptiveThreadingEnabled = true;
+        }
 
         void SetTargetExecutionTime(double Time)
         {
@@ -273,186 +214,6 @@ namespace Blokk
             TargetExecutionTime = Time;
         }
 
-        uint32_t GetSIMDRegisterSize() const
-        {
-            switch (SIMDRegisterLevel)
-            {
-                case SIMDLevel::AVX2:
-                    return 256;
-
-                case SIMDLevel::AVX512:
-                    return 512;
-
-                case SIMDLevel::NEON:
-                case SIMDLevel::SSE2:
-                    return 128;
-
-                default:
-                    return 0;
-            }
-        }
-
-        std::string GetSIMDRegisterType() const
-        {
-            switch (SIMDRegisterLevel)
-            {
-                case SIMDLevel::AVX2:
-                    return "avx2";
-
-                case SIMDLevel::AVX512:
-                    return "avx512";
-
-                case SIMDLevel::SSE2:
-                    return "sse2";
-
-                case SIMDLevel::NEON:
-                    return "neon";
-
-                default:
-                    return "unknown";
-            }
-        }
-
-        void PrintDiagnostics()
-        {
-            std::cout << "BLOKK Diagnostics report ==============" << "\n\n";
-
-            std::cout << "Frames ---------------" << '\n';
-            std::cout << "FPS: " << FPS << '\n';
-            std::cout << "Total frame time: " << FrameTime << '\n';
-            std::cout << "FrameExecutionTime: " << FrameExecutionTime << '\n';
-            std::cout << "TargetExecutionTime: " << TargetExecutionTime << "\n\n";
-
-            std::cout << "Threads ---------------" << '\n';
-            std::cout << "Opened Threads: " << OpenedThreads << '\n';
-            std::cout << "Total Threads: " << ThreadCount << '\n';
-            std::cout << "Optimal thread count reached: "
-                      << (AdaptiveThreadingEnabled ? "true" : "false")
-                      << "\n\n";
-
-            std::cout << "Object Counts ---------------" << '\n';
-            std::cout << "Total object count: " << ObjectCount << '\n';
-            std::cout << "Dynamic object count: " << DynamicObjectCount << '\n';
-            std::cout << "Static object count: " << StaticObjectCount << "\n\n";
-
-            std::cout << "SIMD Register ---------------" << '\n';
-            std::cout << "SIMD register type: "
-                      << GetSIMDRegisterType() << '\n';
-            std::cout << "SIMD register size: "
-                      << GetSIMDRegisterSize() << " bits" << '\n';
-
-            std::cout << "System timing ---------------" << '\n';
-            std::cout << "User update processing: "
-                      << UserUpdateTime << '\n';
-            std::cout << "Updating positions with velocities: "
-                      << VelocityTime << '\n';
-            std::cout << "Animation frame# incrementing: "
-                      << AnimationIncrementTime << '\n';
-            std::cout << "Visibility culling: "
-                      << VisibilityCullingTime << '\n';
-
-            #ifdef Blokk_Rendering_Enabled
-            std::cout << "Rendering: "
-                      << RenderTime << '\n';
-            #endif
-
-            std::cout << "END ==================================" << '\n';
-        }
-
-        #endif
-
-        // Camera functions
-        #ifdef Blokk_CamEnabled
-
-        
-        class CameraController
-        {
-            public:
-
-            int32_t GetXPosition() const
-            {
-                return x;
-            }
-
-            int32_t GetYPosition() const
-            {
-                return y;
-            }
-
-            void SetPosition(int32_t X, int32_t Y)
-            {
-                x = X;
-                y = Y;
-            }
-            
-            void SetPosition(Vector2 Pos)
-            {
-                x = Pos.x;
-                y = Pos.y;
-            }
-            
-            void SetXPosition(int32_t X)
-            {
-                x = X;
-            }
-            
-            void SetYPosition(int32_t Y)
-            {
-                y = Y;
-            }
-            
-            void ChangeXPosition(int32_t X)
-            {
-                x += X;
-            }
-            
-            void ChangeYPosition(int32_t Y)
-            {
-                y += Y;
-            }
-
-            private:
-
-            int32_t x;
-            int32_t y;
-        };
-        
-        CameraController Camera;
-
-        #endif
-
-        #ifdef Blokk_Thread_Control
-
-        void OpenThread()
-        {
-            if(OpenedThreads == ThreadCount)
-            {
-                throw std::out_of_range(
-                    "Blokk error: Cannot create another thread because the maximum thread count has been reached."
-                );
-            }
-
-            Workers.emplace_back(std::make_unique<Worker>());
-            Workers.back()->Awake();
-
-            OpenedThreads++;
-        }
-
-        void DestroyThread()
-        {
-            if(OpenedThreads == 1)
-            {
-                throw std::out_of_range(
-                    "Blokk error: Cannot destroy another thread because the minimum thread count has been reached (1)."
-                );
-            }
-
-            Workers.back()->Stop();
-            Workers.pop_back();
-
-            OpenedThreads--;
-        }
-
         #endif
 
     // PRIVATE -------------------------------------------
@@ -462,22 +223,10 @@ namespace Blokk
         uint32_t ScreenHeight;
         uint32_t ScreenWidth;
 
-        // Positions
-        std::vector<float> XPositions;
-        std::vector<float> YPositions;
-
-        // Velocities
-        std::vector<float> XVelocities;
-        std::vector<float> YVelocities;
-
-        // Collisions
-        std::vector<float> Right;
-        std::vector<float> Left;
-        std::vector<CollisionHit> Collisions;
-
         // Animations
         #ifdef Blokk_Rendering_Enabled
 
+        std::vector<uint8_t> IsVisible;
         std::vector<uint32_t> FrameNums;
         std::vector<uint32_t> AnimNums;
 
@@ -485,33 +234,90 @@ namespace Blokk
         std::unordered_map<std::string, uint32_t> AnimNames;
 
         // Stores a list of animations
-        std::vector<std::vector<SDL_Texture*>> Frames;
-        std::vector<std::vector<uint32_t>> FrameWidths;
-        std::vector<std::vector<uint32_t>> FrameHeights;
-        std::vector<uint32_t> AnimFrameCounts;
+		std::vector<std::vector<std::filesystem::path>> AnimPaths; // Contains the paths to the animation frames for each animation
+		std::vector<std::vector<SDL_Texture*>> Frames; // Contains the loaded SDL_Texture* for each animation frame
+
+        // Contains the frame dimensions for each animation frame
+		std::vector<std::vector<float>> FrameWidths; 
+        std::vector<std::vector<float>> FrameHeights;
+
+        std::vector<uint32_t> AnimFrameCounts; // Contains the number of frames for each animation
 
         // Visibility
-        std::vector<uint32_t> AnimHeights;
-        std::vector<uint32_t> AnimWidths;
-
-        std::vector<uint8_t> IsVisible;
+        std::vector<float> AnimHeights;
+        std::vector<float> AnimWidths;
 
         #endif
 
         // Pointers to object instances
         std::vector<GameObject*> ObjectInstances;
 
-        // Updating velocity stuff
-        std::queue<uint32_t> IntoStatic;
-        std::queue<uint32_t> IntoDynamic;
-
         // Rendering
         std::vector<uint32_t> RenderObjectIdxs;
 
+        // Frmae timings -----------------------------
+        struct Timings
+        {
+            std::chrono::duration<double> secs{0};
+            std::chrono::duration<double, std::milli> milli;
+            std::chrono::duration<double, std::micro> micro;
+            std::chrono::duration<double, std::nano> nano = nanoseconds_zero;
+        };
+        Timings FrameTime;
+        Timings TargetExecutionTime;
+        uint32_t FPS;
+        Uint64 deltaTime;
+
+        // TODO: Add a new vector of booleans to detect whether the function has actually been set
+        // to avoid calling an empty for a potential performance increase
+
+        // Work stealing system (for gameObject update functions)
+        #ifdef Blokk_GameObjects_UpdateFunctions
+
+        uint32_t NumberOfTrials = 0;
+        uint32_t currentProcessingIdx = 0;
+        std::vector<nanoseconds> TotalUpdateTimes; // Represents the total update time for each function
+        std::vector<nanoseconds> AverageUpdateTimes; // Represents the average amount of time each functoin took to execute
+        bool ImprovedUpdateTime; // Represents if the update time from this frame is less than the previous
+        std::vector<uint8_t> UpdatePriorities; // Represents the game object update function priority levels
+        std::vector<uint8_t> UpdateFunctionsSet; // Represents if the update function has been set
+        nanoseconds TotalUpdateTime; // Total amount of time for all functions to update
+        nanoseconds AverageUpdateTime; // Average amount of time for all the functions to update
+        nanoseconds PrevAvgUpdateTime;
+        bool ImprovedUpdateTimes; // If the update times from this frame were better that previous frames (shorter)
+
+        uint8_t LowestUpdatePriorityLevel;
+        uint8_t HighestUpdatePriorityLevel;
+        std::vector<uint32_t> LowestUpdatePriorityFunctions;
+
+        std::vector<concurrent_unordered_queue<IndexRange>> ThreadRanges; // Represents every thread's queue of ranges to complete
+        std::vector<IndexRange> FullRanges; // Represent the full ranges assigned to each thread at the start
+        std::atomic<uint32_t> ProcessingWorkerCount = 0; // Represents the number of workers currently processing
+        std::atomic<uint32_t> RangesCompleteCount; // Represents the number of workers that have their ranges complete OR the last range is being currently processed
+        std::atomic<bool> AllWorkComplete; // If all the ranges have been processed
+        std::atomic<bool> WorkCompleteBeingChecked;
+
+        #endif // Blokk_GameObjects_UpdateFunctions
+
+		enum class LoadingStage
+		{
+			LoadingAnimations, // Currently loading all the animations
+			TimingUpdateFunctions, // Currently timing all the gameObject update functions
+            FilterUpdateFunctions, // Currently getting rid of unneeded update functions if taking too long
+			AdaptiveThreading, // Currently adapting the threading system to the current load
+			Complete // Finished loading the engine
+		};
+
+        // Allow the user to create their own custom loading screen for their game! --------------------------------------
+		LoadingStage CurrentLoadingStage; // Current loading stage of the engine
+		float CurrentPercentage; // Current percentage of the current loading stage
+		uint32_t CurrentLoadingObjectIdx; // Current object index being processed for the current loading stage
+        uint32_t NumberOfTrials; 
+
         // Workers
-        uint32_t ThreadCount;
-        uint32_t OpenedThreads;
-        uint32_t UsedThreads;
+		uint32_t ThreadCount; // Total number of threads available on the system
+		uint32_t OpenedThreads; // Total number of threads currently opened by the engine
+		uint32_t UsedThreads; // Total number of threads currently being used by the engine
         uint32_t PrevOpenedThreads;
 
         bool ThreadOpenedPrevFrame;
@@ -521,8 +327,7 @@ namespace Blokk
         double FrameExecutionTime;
         double PrevFrameTime;
         double TargetExecutionTime;
-        double FrameTime;
-        uint32_t FPS;
+        
 
         std::vector<std::unique_ptr<Worker>> Workers;
 
@@ -549,89 +354,11 @@ namespace Blokk
         // Get the right function implementations according to the user's SIMD
         void GetFunctions()
         {
-            switch (SIMDRegisterLevel)
-            {
-                // 256 bit
-                case SIMDLevel::AVX2:
-
-                    #if (Blokk_Visibility_CullType == 0)
-                        CheckVisibleRange =
-                            CheckVisibilityFn_Basic<SIMDLevel::AVX2>;
-                    #elif (Blokk_Visibility_CullType == 1)
-                        CheckVisibleRange =
-                            CheckVisibilityFn_Axis<SIMDLevel::AVX2>;
-                    #endif
-
-                    UpdatePositions =
-                        UpdatePositionsFn<SIMDLevel::AVX2>;
-
-                    break;
-
-
-                // 512 bit
-                case SIMDLevel::AVX512:
-
-                    #if (Blokk_Visibility_CullType == 0)
-                        CheckVisibleRange =
-                            CheckVisibilityFn_Basic<SIMDLevel::AVX512>;
-                    #elif (Blokk_Visibility_CullType == 1)
-                        CheckVisibleRange =
-                            CheckVisibilityFn_Axis<SIMDLevel::AVX512>;
-                    #endif
-
-                    UpdatePositions =
-                        UpdatePositionsFn<SIMDLevel::AVX512>;
-
-                    break;
-
-
-                // 128 bit - default
-                case SIMDLevel::SSE2:
-
-                    #if (Blokk_Visibility_CullType == 0)
-                        CheckVisibleRange =
-                            CheckVisibilityFn_Basic<SIMDLevel::SSE2>;
-                    #elif (Blokk_Visibility_CullType == 1)
-                        CheckVisibleRange =
-                            CheckVisibilityFn_Axis<SIMDLevel::SSE2>;
-                    #endif
-
-                    UpdatePositions =
-                        UpdatePositionsFn<SIMDLevel::SSE2>;
-
-                    break;
-
-
-                case SIMDLevel::NEON:
-
-                    #if (Blokk_Visibility_CullType == 0)
-                        CheckVisibleRange =
-                            CheckVisibilityFn_Basic<SIMDLevel::NEON>;
-                    #elif (Blokk_Visibility_CullType == 1)
-                        CheckVisibleRange =
-                            CheckVisibilityFn_Axis<SIMDLevel::NEON>;
-                    #endif
-
-                    UpdatePositions =
-                        UpdatePositionsFn<SIMDLevel::NEON>;
-
-                    break;
-
-
-                // Scalar - default
-                default:
-
-                    #if (Blokk_Visibility_CullType == 0)
-                        CheckVisibleRange =
-                            CheckVisibilityFn_Basic<SIMDLevel::Unsupported>;
-                    #elif (Blokk_Visibility_CullType == 1)
-                        CheckVisibleRange =
-                            CheckVisibilityFn_Axis<SIMDLevel::Unsupported>;
-                    #endif
-
-                    UpdatePositions =
-                        UpdatePositionsFn<SIMDLevel::Unsupported>;
-            }
+            #if (Blokk_Visibility_CullType == 0)
+                CheckVisibleRange = CheckVisibilityFn_Basic;
+            #elif (Blokk_Visibility_CullType == 1)
+                CheckVisibleRange = CheckVisibilityFn_Axis;
+            #endif
         }
 
         // Split a number into x ranges
@@ -664,35 +391,17 @@ namespace Blokk
             return Result;
         }
 
-
-        #ifndef Blokk_Thread_Control
-
-        void OpenThread()
-        {
-            Workers.emplace_back(std::make_unique<Worker>());
-            Workers.back()->Awake();
-
-            OpenedThreads++;
+        void GetRanges(uint32_t Length, uint32_t Count, std::vector<IndexRange>* Result) {
+            *Result = GetRanges(Length, Count);
         }
 
-        void DestroyThread()
-        {
-            Workers.back()->Stop();
-            Workers.pop_back();
 
-            OpenedThreads--;
-        }
-
-        #endif
+        
 
         // Time engine processes -------------------------------------
 
-        // Do the engine processes and time it
+        // Execute engine processes and time it
         double TimeEngineProcesses();
-
-        // Adaptive threading system
-        void StopAdaptiveThreadingSystem();
-        void EnableAdaptiveThreadingSystem();
 
         // Swap 2 objects
         void SwapStaticObjects(uint32_t Obj1, uint32_t Obj2);
@@ -704,14 +413,10 @@ namespace Blokk
 
         // POSITIONS W/ VELS -----------------------------------------
 
-        void UpdateRangeOfPositions(
-            IndexRange TRange,
-            Worker* Thread
-        );
+        void UpdateRangeOfPositions(Worker& worker);
 
         UpdatePositionsFnPtr UpdatePositions;
 
-        template <SIMDLevel Level>
         void UpdatePositionsFn(
             float* PosX,
             float* PosY,
@@ -724,19 +429,11 @@ namespace Blokk
 
         #if (Blokk_Visibility_CullType == 0)
 
-            template <SIMDLevel Level>
-            void CheckVisibilityFn_Basic(
-                IndexRange Range,
-                Worker* Thread
-            );
+            void CheckVisibilityFn_Basic(Worker& worker);
 
         #elif (Blokk_Visibility_CullType == 1)
 
-            template <SIMDLevel Level>
-            void CheckVisibilityFn_Axis(
-                IndexRange Range,
-                Worker* Thread
-            );
+            void CheckVisibilityFn_Axis(Worker& worker);
 
         #endif
 
@@ -744,13 +441,33 @@ namespace Blokk
 
         // Adding objects ----------------------------------------------------
 
-        void ProcessAddCommand(ObjectCreationParams Fields);
-        void ProcessAddCommand(Vector2 Velocity, Vector2 Position, GameObject* Object, bool Visible);
+        void ProcessAddCommand(EngineObjectCreationParams Fields);
+
+        void ProcessAddCommand(bool Visible, vector2<float> Velocity, vector2<float> Position, GameObject* Object);
 
         // Frame increment --------------------------------------------
 
         void IncrementFrames(
-            std::vector<uint32_t>& FrameNums
+            std::vector<uint32_t>& FrameNums,
+            uint32_t Size
         );
+
+        // GameObject update functions
+        #ifdef Blokk_GameObject_UpdateFunctions
+
+        void UpdateObjects();
+        void TimeUpdateRangeOfObjects(Worker& worker);
+        void ResetUpdateTimes();
+        void UpdateTimeVariables();
+        void ProcessRange(IndexRange range);
+        void UpdateRangeOfObjects(Worker& worker);
+        void UpdateCompletionVariables();
+        void StealUpdateObjects(uint32_t idx);
+        void GetAverageUpdateTimes();
+        void Remove_Function(uint32_t idx);
+        
+        #endif
+
+        void LoadEngine(uint32_t Threading_NumberOfTests);
     };
 }

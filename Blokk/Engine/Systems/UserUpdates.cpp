@@ -1,12 +1,14 @@
 #include <utility>
 #include <vector>
 
-#include "GameTypes.hpp"
-#include "GameObject.hpp"
+#include "types.hpp"
+#include "Cached/GameObject.hpp"
+#include "Uncached/GameObject.hpp"
+#include "EngineClassData.hpp"
 
 namespace Blokk {
 
-void ObjectManager::DestroyStaticObject(uint32_t ObjIdx)
+void EngineCore::DestroyStaticObject(uint32_t ObjIdx)
 {
     // Swap with the last item
     SwapStaticObjects(ObjIdx, ObjectCount - 1);
@@ -20,7 +22,7 @@ void ObjectManager::DestroyStaticObject(uint32_t ObjIdx)
     ObjectCount--;
 }
 
-void ObjectManager::DestroyDynamicObject(uint32_t ObjIdx) 
+void EngineCore::DestroyDynamicObject(uint32_t ObjIdx)
 {
     // Swap with the last item
     SwapDynamicObjects(ObjIdx, DynamicObjectCount - 1);
@@ -42,7 +44,8 @@ void ObjectManager::DestroyDynamicObject(uint32_t ObjIdx)
     ObjectCount--;
 }
 
-void ObjectManager::ProcessAddCommand(Vector2 Velocity, Vector2 Position, GameObject* Object, bool Visible)
+template <GameObjectTypes T>
+void EngineCore::ProcessAddCommand(bool Visible, vector2<float> Velocity, vector2<float> Position, T* Object)
 {
     float XVel = Velocity.x;
     float YVel = Velocity.y;
@@ -100,13 +103,12 @@ void ObjectManager::ProcessAddCommand(Vector2 Velocity, Vector2 Position, GameOb
     ObjectCount++;
 }
 
-
-void ObjectManager::ProcessAddCommand(ObjectCreationParams Fields)
-{
+template <GameObjectTypes T>
+void EngineCore::ProcessAddCommand(EngineObjectCreationParams<T> Fields) {
     ProcessAddCommand(Fields.Velocity, Fields.Position, Fields.Object, Fields.Visible);
 }
 
-void ObjectManager::SwapStaticObjects(uint32_t Obj1, uint32_t Obj2)
+void EngineCore::SwapStaticObjects(uint32_t Obj1, uint32_t Obj2)
 {
     // Swap X and Y
     std::swap(XPositions[Obj1], XPositions[Obj2]);
@@ -125,7 +127,7 @@ void ObjectManager::SwapStaticObjects(uint32_t Obj1, uint32_t Obj2)
     ObjectInstances[Obj2]->EngineIdx = Obj2;
 }
 
-void ObjectManager::SwapDynamicObjects(uint32_t Obj1, uint32_t Obj2)
+void EngineCore::SwapDynamicObjects(uint32_t Obj1, uint32_t Obj2)
 {
     // Swap X and Y
     std::swap(XPositions[Obj1], XPositions[Obj2]);

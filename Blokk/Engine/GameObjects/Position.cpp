@@ -1,4 +1,5 @@
 #include "GameObject.hpp" 
+#include "EngineClassData.hpp"
  
 namespace Blokk { 
  
@@ -10,7 +11,7 @@ void GameObject::SetPosition(float TargetX, float TargetY)
     Engine->YPositions[EngineIdx] = TargetY;
 } 
 
-void GameObject::SetPosition(Vector2 TargetPos) 
+void GameObject::SetPosition(vector2<float> TargetPos) 
 { 
     SetPosition(TargetPos.x, TargetPos.y); 
 } 
@@ -26,9 +27,9 @@ void GameObject::SetYPosition(float Target)
 } 
  
 // Get 
-Vector2 GameObject::GetPosition()  
+vector2<float> GameObject::GetPosition()  
 { 
-    return Vector2( 
+    return vector2<float>( 
         Engine->XPositions[EngineIdx], 
         Engine->YPositions[EngineIdx] 
     ); 
@@ -41,7 +42,7 @@ void GameObject::ChangePosition(float ChangeX, float ChangeY)
     Engine->YPositions[EngineIdx] += ChangeY;
 } 
 
-void GameObject::ChangePosition(Vector2 Change) 
+void GameObject::ChangePosition(vector2<float> Change) 
 { 
     ChangePosition(Change.x, Change.y); 
 } 
